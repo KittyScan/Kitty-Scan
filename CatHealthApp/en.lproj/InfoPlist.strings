@@ -1,0 +1,6 @@
+/* System permission prompts — en locale. Matches Info.plist English baseline. */
+"NSCameraUsageDescription" = "Used to take photos of your cat for AI-powered health analysis.";
+"NSPhotoLibraryUsageDescription" = "Used to pick a photo of your cat from your album for AI-powered health analysis or as your cat's avatar.";
+"NSPhotoLibraryAddUsageDescription" = "Used to save your health analysis report image to Photos when you tap Share → Save Image.";
+"NSLocationWhenInUseUsageDescription" = "Used to find veterinary clinics near you when your cat needs urgent care.";
+"CFBundleDisplayName" = "KittyScan";

@@ -1,0 +1,111 @@
+// Tabs
+"tab.detect" = "Detect";
+"tab.history" = "History";
+"tab.settings" = "Settings";
+
+// Camera View
+"camera.app.subtitle" = "AI Kitty Health Companion";
+"camera.placeholder.title" = "Tap below to select\na cat photo";
+"camera.placeholder.sub" = "Tap below to pick a photo";
+"camera.select" = "Select Photo";
+"camera.reselect" = "Reselect";
+"camera.analyze" = "Analyze";
+"camera.analyzing" = "Analyzing…";
+"camera.source.title" = "Select Image Source";
+"camera.source.camera" = "📷  Take Photo";
+"camera.source.library" = "🖼️  Photo Library";
+"camera.source.cancel" = "Cancel";
+
+// Report
+"report.title" = "Health Report";
+"report.score.excellent" = "Excellent";
+"report.score.good" = "Good";
+"report.score.fair" = "Fair";
+"report.score.attention" = "Attention";
+"report.basic.title" = "Basic Info";
+"report.basic.breed" = "Breed";
+"report.basic.color" = "Fur Color";
+"report.basic.personality" = "Personality";
+"report.ancestry.title" = "Ancestry";
+"report.body.title" = "Body Check";
+"report.body.eyes" = "Eyes";
+"report.body.fur" = "Fur";
+"report.body.posture" = "Posture";
+"report.lifestyle.title" = "Lifestyle Tip";
+"report.lifestyle.water" = "Drink More Water";
+"report.lifestyle.food" = "Eat Better";
+"report.lifestyle.exercise" = "Exercise More";
+"report.lifestyle.default" = "Keep it up";
+"report.suggestions.title" = "Care Tips";
+"report.warnings.title" = "Warnings";
+"report.disclaimer" = "AI analysis is not a substitute for veterinary diagnosis";
+
+// History
+"history.title" = "History";
+"history.empty.title" = "No Records Yet";
+"history.empty.sub" = "Records will appear here after your first check";
+"history.score" = "Health Score";
+
+// Settings
+"settings.title" = "Settings";
+"settings.language.section" = "Language";
+"settings.account.section" = "Account";
+"settings.account.loggedin" = "Signed in as";
+"settings.signout" = "Sign Out";
+
+// Auth
+"auth.welcome" = "Welcome to KittyScan";
+"auth.subtitle" = "AI-powered cat care";
+"auth.google" = "Sign in with Google";
+"auth.apple" = "Sign in with Apple";
+"auth.skip" = "Skip for now";
+"auth.note" = "Sign in to sync your history across devices";
+"auth.or" = "or";
+
+// Camera / Cat Selector
+"camera.subject" = "Subject";
+"camera.add.cat" = "Add";
+"camera.today.label" = "How is your cat today?";
+"camera.today.placeholder" = "e.g. Drinking less water, seems a bit lazy…";
+
+// Add Cat Sheet
+"cat.add.title" = "Add Cat";
+"cat.add.basic" = "Basic Info";
+"cat.name.placeholder" = "Cat name (required)";
+"cat.breed.placeholder" = "Breed (e.g. Tabby)";
+"cat.age.picker" = "Age Group";
+"cat.neuter" = "Neutered";
+"cat.issues.section" = "Known Issues (optional)";
+"cat.issues.placeholder" = "e.g. prone to obesity, drinks little water…";
+"cat.issues.add" = "Add";
+"cat.cancel" = "Cancel";
+"cat.save" = "Save";
+"cat.age.0to1" = "0-1 yr";
+"cat.age.1to3" = "1-3 yr";
+"cat.age.3to7" = "3-7 yr";
+"cat.age.7plus" = "7+ yr";
+
+// Report share / chat
+"report.share" = "Share";
+"report.chat.title" = "Have questions? Ask me";
+"report.chat.placeholder" = "Ask about %@…";
+"report.chat.followup" = "Follow up…";
+"report.chat.error" = "Something went wrong, please try again 🙏";
+
+// Community
+"tab.community" = "Community";
+"community.title" = "Community";
+"community.tab.following" = "Following";
+"community.tab.discover" = "Discover";
+"community.tab.trending" = "Trending";
+"community.empty.following" = "Follow other cat owners to see their posts";
+"community.empty.discover" = "No posts yet — check back soon";
+"community.empty.trending" = "No trending posts yet";
+"community.new.post" = "New Post";
+"community.post.like" = "Like";
+"community.post.share" = "Share";
+"community.post.placeholder" = "Share something about your cat…";
+"community.post.publish" = "Publish";
+"community.post.cancel" = "Cancel";
+"community.recommended.title" = "Recommended for You";
+"community.friend.suggestion" = "You might know";

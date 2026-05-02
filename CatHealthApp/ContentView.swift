@@ -1,24 +1,21 @@
-//
-//  ContentView.swift
-//  CatHealthApp
-//
-//  Created by carl li on 4/16/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @Environment(LanguageManager.self) var lang
 
-#Preview {
-    ContentView()
+    var body: some View {
+        TabView {
+            CameraView()
+                .tabItem { Label(lang.loc("tab.detect"), systemImage: "pawprint.fill") }
+            DiaryView()
+                .tabItem {
+                    Label(lang.isChineseSelected ? "日记" : "Diary",
+                          systemImage: "calendar")
+                }
+            HistoryView()
+                .tabItem { Label(lang.loc("tab.history"), systemImage: "clock.fill") }
+            SettingsView()
+                .tabItem { Label(lang.loc("tab.settings"), systemImage: "gearshape.fill") }
+        }
+    }
 }

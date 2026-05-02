@@ -1,0 +1,111 @@
+// Tabs
+"tab.detect" = "检测";
+"tab.history" = "历史";
+"tab.settings" = "设置";
+
+// Camera View
+"camera.app.subtitle" = "AI 猫咪健康管家";
+"camera.placeholder.title" = "点击下方按钮\n选择猫咪照片";
+"camera.placeholder.sub" = "Tap below to pick a photo";
+"camera.select" = "选择照片";
+"camera.reselect" = "重新选择";
+"camera.analyze" = "开始分析";
+"camera.analyzing" = "AI 分析中…";
+"camera.source.title" = "选择图片来源";
+"camera.source.camera" = "📷  拍照";
+"camera.source.library" = "🖼️  从相册选择";
+"camera.source.cancel" = "取消";
+
+// Report
+"report.title" = "健康报告";
+"report.score.excellent" = "优秀";
+"report.score.good" = "良好";
+"report.score.fair" = "一般";
+"report.score.attention" = "需关注";
+"report.basic.title" = "基本信息";
+"report.basic.breed" = "品种";
+"report.basic.color" = "毛色";
+"report.basic.personality" = "性格";
+"report.ancestry.title" = "爸妈品种";
+"report.body.title" = "身体状况";
+"report.body.eyes" = "眼睛";
+"report.body.fur" = "毛发";
+"report.body.posture" = "体态";
+"report.lifestyle.title" = "生活建议";
+"report.lifestyle.water" = "多喝水";
+"report.lifestyle.food" = "加强营养";
+"report.lifestyle.exercise" = "多运动";
+"report.lifestyle.default" = "保持现状";
+"report.suggestions.title" = "养护建议";
+"report.warnings.title" = "注意事项";
+"report.disclaimer" = "AI 分析不能替代兽医诊断，如有健康问题请咨询专业兽医";
+
+// History
+"history.title" = "历史记录";
+"history.empty.title" = "还没有记录";
+"history.empty.sub" = "完成第一次检测后，记录会出现在这里";
+"history.score" = "健康分";
+
+// Settings
+"settings.title" = "设置";
+"settings.language.section" = "语言";
+"settings.account.section" = "账号";
+"settings.account.loggedin" = "已登录";
+"settings.signout" = "退出登录";
+
+// Auth
+"auth.welcome" = "欢迎使用 KittyScan";
+"auth.subtitle" = "用 AI 关爱你的猫咪";
+"auth.google" = "使用 Google 登录";
+"auth.apple" = "使用 Apple 登录";
+"auth.skip" = "暂时跳过";
+"auth.note" = "登录后可在多设备同步历史记录";
+"auth.or" = "或";
+
+// Camera / Cat Selector
+"camera.subject" = "检测对象";
+"camera.add.cat" = "添加";
+"camera.today.label" = "今天它怎么样？";
+"camera.today.placeholder" = "比如：最近喝水少了，有点懒…";
+
+// Add Cat Sheet
+"cat.add.title" = "添加猫咪";
+"cat.add.basic" = "基本信息";
+"cat.name.placeholder" = "猫咪名字（必填）";
+"cat.breed.placeholder" = "品种（如：虎斑猫）";
+"cat.age.picker" = "年龄段";
+"cat.neuter" = "已绝育";
+"cat.issues.section" = "已知问题（可选）";
+"cat.issues.placeholder" = "如：容易肥胖、爱喝水少…";
+"cat.issues.add" = "添加";
+"cat.cancel" = "取消";
+"cat.save" = "保存";
+"cat.age.0to1" = "0-1岁";
+"cat.age.1to3" = "1-3岁";
+"cat.age.3to7" = "3-7岁";
+"cat.age.7plus" = "7岁以上";
+
+// Report share / chat
+"report.share" = "分享";
+"report.chat.title" = "有问题？问我";
+"report.chat.placeholder" = "问关于%@的问题…";
+"report.chat.followup" = "继续追问…";
+"report.chat.error" = "出了点问题，稍后再试试 🙏";
+
+// Community
+"tab.community" = "社群";
+"community.title" = "社群";
+"community.tab.following" = "关注";
+"community.tab.discover" = "发现";
+"community.tab.trending" = "热门";
+"community.empty.following" = "关注其他铲屎官，查看他们的动态";
+"community.empty.discover" = "暂无帖子，稍后再来看看";
+"community.empty.trending" = "暂无热门帖子";
+"community.new.post" = "发帖";
+"community.post.like" = "点赞";
+"community.post.share" = "分享";
+"community.post.placeholder" = "分享关于你猫咪的故事…";
+"community.post.publish" = "发布";
+"community.post.cancel" = "取消";
+"community.recommended.title" = "为你推荐";
+"community.friend.suggestion" = "你可能认识";

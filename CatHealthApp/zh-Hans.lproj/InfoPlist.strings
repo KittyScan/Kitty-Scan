@@ -1,0 +1,6 @@
+/* System permission prompts — zh-Hans locale. Overrides Info.plist values for Chinese devices. */
+"NSCameraUsageDescription" = "用于拍摄您家猫咪的照片,进行 AI 健康分析。";
+"NSPhotoLibraryUsageDescription" = "用于从相册选择猫咪照片进行 AI 分析,或作为猫咪头像。";
+"NSPhotoLibraryAddUsageDescription" = "当您点击分享 → 保存图片时,用于把健康分析报告图片保存到相册。";
+"NSLocationWhenInUseUsageDescription" = "当您的猫咪需要紧急就医时,用于查找附近的宠物医院。";
+"CFBundleDisplayName" = "KittyScan";

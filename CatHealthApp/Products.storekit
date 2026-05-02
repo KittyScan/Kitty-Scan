@@ -1,0 +1,94 @@
+{
+  "identifier" : "F1AC4A0E-CATHEALTH",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "PACK10",
+      "localizations" : [
+        {
+          "description" : "10 cat health analyses, never expires.",
+          "displayName" : "10-Pack Analyses",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "10 次健康分析,长期有效。",
+          "displayName" : "10 次分析包",
+          "locale" : "zh_Hans"
+        }
+      ],
+      "productID" : "com.jingyan.CatHealthApp.pack10",
+      "referenceName" : "Pack 10",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "6.99",
+      "familyShareable" : false,
+      "internalID" : "PACK30",
+      "localizations" : [
+        {
+          "description" : "30 cat health analyses, never expires.",
+          "displayName" : "30-Pack Analyses",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "30 次健康分析,长期有效。",
+          "displayName" : "30 次分析包",
+          "locale" : "zh_Hans"
+        }
+      ],
+      "productID" : "com.jingyan.CatHealthApp.pack30",
+      "referenceName" : "Pack 30",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "0",
+    "_developerTeamID" : "0",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 762000000,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "GROUP1",
+      "localizations" : [],
+      "name" : "KittyScan Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "MONTHLY",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "50 analyses + unlimited chat per month.",
+              "displayName" : "KittyScan Pro Monthly",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "每月 50 次分析 + 不限次数聊天追问。",
+              "displayName" : "KittyScan Pro 月订",
+              "locale" : "zh_Hans"
+            }
+          ],
+          "productID" : "com.jingyan.CatHealthApp.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly Pro",
+          "subscriptionGroupID" : "GROUP1",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
