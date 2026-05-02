@@ -118,12 +118,35 @@ CatHealthApp/
 
 ---
 
-## Notes
+## Related
 
+- **Backend**: <https://github.com/KittyScan/Kitty-Scan-Worker> — the
+  Cloudflare Worker that brokers Claude calls, verifies Apple StoreKit
+  JWS, and runs the entitlement ledger.
 - v1.0 currently in App Store review.
-- Worker source is in a separate repo.
 - Backend secrets (Anthropic key, Apple .p8) are stored as Cloudflare
   Worker secrets, never committed.
+
+## What I built and why it's interesting
+
+- **Multi-model AI orchestration with cost-per-request awareness** — the
+  backend selects between Claude Sonnet 4 (accuracy) and Haiku 4.5 (~6×
+  cheaper) based on the user's *server-verified* tier, not the
+  client-claimed tier. Tier signal comes from a JWS-validated Apple
+  StoreKit transaction, never the request header alone.
+- **Production-grade prompt engineering pipeline** — `PromptBuilder.swift`
+  composes a structured prompt that folds in the cat's profile, the last 7
+  days of diary entries, and a strict JSON output schema so the iOS UI can
+  parse responses deterministically.
+- **Defense-in-depth against AI-cost abuse** — three orthogonal layers
+  (per-IP / per-device / per-account-token) backstop the Anthropic Console
+  hard spend cap so a single jailbroken client can't drain the budget.
+- **Stable user identity via NSUbiquitousKeyValueStore** — closes the
+  "delete app to reset free trial" loophole without forcing sign-in,
+  preserving the friction-free skip-onboarding flow.
+- **End-to-end privacy** — no third-party analytics SDKs, no IDFA, no ATT
+  prompt; cat photos pass through during the API call only and are never
+  persisted on the backend.
 
 ## License
 
