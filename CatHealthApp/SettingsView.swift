@@ -719,8 +719,9 @@ private struct CatEditSheet: View {
             }
             .navigationTitle(zh ? "编辑档案" : "Edit profile")
             .navigationBarTitleDisplayMode(.inline)
-            // Inline blue hide-keyboard button — consistent with the rest of
-            // the app (chat / AddCatSheet / Onboarding).
+            // Inline hide-keyboard button — consistent with the rest of the app
+            // (chat / AddCatSheet / Onboarding). Color tracks the cat's active
+            // theme so the button blends with whatever palette is in play.
             .safeAreaInset(edge: .bottom) {
                 if focusedField != nil {
                     Button { focusedField = nil } label: {
@@ -732,7 +733,7 @@ private struct CatEditSheet: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.info))
+                        .background(RoundedRectangle(cornerRadius: 12).fill(theme.deep))
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, 16)

@@ -923,6 +923,8 @@ private struct AddCatSheet: View {
     @Environment(\.modelContext) var modelContext
     @Environment(\.dismiss) var dismiss
     @Environment(LanguageManager.self) var lang
+    @Environment(ThemeProvider.self) private var themeProvider
+    private var theme: CatTheme { themeProvider.theme }
 
     /// Optional prefill from the "different cat detected" loop.
     /// When the user accepts the prompt to create a profile for a freshly
@@ -1000,9 +1002,11 @@ private struct AddCatSheet: View {
                     }
                 }
             }
-            // Inline blue hide-keyboard button — same pattern as HealthReportView's
+            // Inline hide-keyboard button — same pattern as HealthReportView's
             // chat: only shows while a TextField is focused, sits in the safe-area
             // inset so it floats above the keyboard rather than fighting the Form.
+            // Uses the active theme's deep color so the button matches whichever
+            // cat palette is currently in play.
             .safeAreaInset(edge: .bottom) {
                 if focusedField != nil {
                     Button { focusedField = nil } label: {
@@ -1016,7 +1020,7 @@ private struct AddCatSheet: View {
                         .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Theme.info)
+                                .fill(theme.deep)
                         )
                     }
                     .buttonStyle(.plain)

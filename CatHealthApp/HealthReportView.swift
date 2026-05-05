@@ -13,6 +13,8 @@ struct HealthReportView: View {
     var recentRecords: [HistoryRecord] = []
     @Environment(LanguageManager.self) var lang
     @Environment(SubscriptionManager.self) var subs
+    @Environment(ThemeProvider.self) private var themeProvider
+    private var theme: CatTheme { themeProvider.theme }
     @State private var expanded: Set<String> = ["warnings"]
     @State private var showShareSheet = false
     @State private var shareImage: UIImage?
@@ -580,7 +582,7 @@ struct HealthReportView: View {
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Theme.info)
+                            .fill(theme.deep)
                     )
                 }
                 .buttonStyle(.plain)

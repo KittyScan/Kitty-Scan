@@ -426,9 +426,10 @@ private struct ProfileCreateStep: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        // Inline blue hide-keyboard button — same pattern as the chat / AddCatSheet:
+        // Inline hide-keyboard button — same pattern as the chat / AddCatSheet:
         // floats above the keyboard while a TextField is focused, sits in the
-        // safe-area inset so it doesn't fight the ScrollView layout.
+        // safe-area inset so it doesn't fight the ScrollView layout. Color
+        // tracks the chosen breed's theme so it matches the current background.
         .safeAreaInset(edge: .bottom) {
             if focusedField != nil {
                 Button { focusedField = nil } label: {
@@ -440,7 +441,7 @@ private struct ProfileCreateStep: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.info))
+                    .background(RoundedRectangle(cornerRadius: 12).fill(flow.theme.deep))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16)
