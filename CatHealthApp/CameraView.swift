@@ -27,9 +27,16 @@ struct CameraView: View {
     // Analyze button — this is what gives the user sub-second feedback that
     // "AI is thinking", instead of a 5-second blank wait. `isObservationDone`
     // flips once the JSON portion starts so the card transitions to a
-    // "Generating report…" state.
+    // "Generating report…" state. (Used for free + pack users.)
     @State private var streamingObservation: String = ""
     @State private var isObservationDone: Bool = false
+
+    // Agent UX (P1, Pro-only). When the active user is a Pro subscriber the
+    // analyze flow runs through `AgentRunner`, which emits stage events as
+    // the agent observes → calls tools → synthesizes. `agentStages` is the
+    // UI-bound model; events from the runner mutate it in place so the
+    // progress card animates through the four steps.
+    @State private var agentStages: [AgentStageState] = AgentStageState.initial
 
     // Long-press on a cat surfaces a context menu with "Delete" — uses the
     // iOS-native long-press path (works inside ScrollView), no wiggle mode.
@@ -82,7 +89,9 @@ struct CameraView: View {
                     todayNoteSection
                     actionButtons
                     if let errorMessage { errorBanner(errorMessage) }
-                    if isAnalyzing && (!streamingObservation.isEmpty || isObservationDone) {
+                    if isAnalyzing && agentStages.contains(where: { $0.isCurrent || $0.isDone }) {
+                        agentProgressCard
+                    } else if isAnalyzing && (!streamingObservation.isEmpty || isObservationDone) {
                         streamingObservationCard
                     }
                     if let report {
@@ -576,6 +585,87 @@ struct CameraView: View {
         selectedCat.map { lang.loc("camera.analyzing") + " \($0.name)…" } ?? lang.loc("camera.analyzing")
     }
 
+    /// Multi-stage agent progress card (Pro-only path). Shows a vertical
+    /// checklist of the four stages — observing → history → diary →
+    /// synthesizing — with per-stage summaries (e.g. "3 past scans") that
+    /// arrive as each tool resolves. The current stage gets a tiny inline
+    /// spinner; finished stages get the theme accent checkmark; future
+    /// stages stay dimmed. Same visual family as the streaming card so the
+    /// upgrade from free → pro feels consistent rather than jarring.
+    private var agentProgressCard: some View {
+        let zh = lang.isChineseSelected
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(theme.light.opacity(0.6))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(theme.deep)
+                        .symbolEffect(.pulse, options: .repeating)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(zh ? "深度分析中喵 ♡" : "Deep analysis in progress ♡")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.deep)
+                    Text(zh ? "Pro · 整合历史 + 日记" : "Pro · history + diary in the loop")
+                        .font(.caption2)
+                        .foregroundStyle(theme.main.opacity(0.7))
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(agentStages) { stage in
+                    HStack(alignment: .top, spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .stroke(theme.main.opacity(stage.isDone ? 0 : 0.3), lineWidth: 1)
+                                .frame(width: 22, height: 22)
+                            if stage.isDone {
+                                Circle().fill(theme.accent).frame(width: 22, height: 22)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else if stage.isCurrent {
+                                ProgressView().controlSize(.mini).tint(theme.deep)
+                            } else {
+                                Image(systemName: stage.icon)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(theme.main.opacity(0.4))
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(zh ? stage.labelZh : stage.labelEn)
+                                .font(.callout)
+                                .foregroundStyle(stage.isDone || stage.isCurrent
+                                                 ? theme.deep
+                                                 : theme.main.opacity(0.5))
+                            if let summary = stage.summary, !summary.isEmpty {
+                                Text(summary)
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.main.opacity(0.7))
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(theme.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(theme.light.opacity(0.6), lineWidth: 0.5)
+                )
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .animation(.easeInOut(duration: 0.18), value: agentStages)
+    }
+
     /// Inline card shown while a streaming analyze is in flight. Until the
     /// JSON portion starts, it shows Claude's pre-JSON observation streaming
     /// in with a typewriter cursor — the user sees text within ~1s instead
@@ -751,16 +841,16 @@ struct CameraView: View {
 
         isAnalyzing = true; errorMessage = nil; report = nil
         reportIsForeignCat = false
-        // Reset streaming UX state so a previous run's observation text
-        // doesn't flash before the new stream starts.
+        // Reset both the streaming card and the agent progress card so a
+        // previous run's UI doesn't flash before this run's events land.
         streamingObservation = ""
         isObservationDone = false
+        agentStages = AgentStageState.initial
         defer {
             isAnalyzing = false
-            // Tear down the streaming card cleanly. The report card takes
-            // over the visual real estate.
             streamingObservation = ""
             isObservationDone = false
+            agentStages = AgentStageState.initial
         }
 
         // Photo-quality pre-flight — skipped on the user-confirmed retry path
@@ -809,35 +899,80 @@ struct CameraView: View {
             // Subscribers paid for accuracy; free/pack users get usable
             // analyses at a fraction of the cost.
             let tier: ClaudeService.Tier = subs.isSubscribed ? .premium : .economy
-            // Streaming path (P0). Same payload as the buffered call, but the
-            // pre-JSON observation streams into `streamingObservation` so the
-            // user sees text within ~1s instead of waiting on a spinner. The
-            // final parsed HealthReport arrives as the terminal `.report` event.
-            let stream = ClaudeService.shared.analyzeImageStreaming(
-                image,
-                cat: contextCat,
-                recentRecords: recentRecords,
-                recentLogs: recentLogs,
-                todayNote: todayNote.isEmpty ? nil : todayNote,
-                tier: tier,
-                isEnglish: !lang.isChineseSelected
-            )
-            var finalReport: HealthReport?
-            for try await event in stream {
-                switch event {
-                case .observation(let chunk):
-                    // SwiftUI redraws on every append — the chunk size is
-                    // small enough (a few tokens) that this is visually fluid.
-                    streamingObservation += chunk
-                case .observationDone:
-                    isObservationDone = true
-                case .report(let r):
-                    finalReport = r
+
+            // Two paths for v2.0:
+            //   • Pro subscribers → AgentRunner: multi-turn loop with
+            //     `get_scan_history` + `get_diary_entries` tools, then a
+            //     synthesis turn. Visible to the user as the staged
+            //     `agentProgressCard`.
+            //   • Free + pack    → ClaudeService.analyzeImageStreaming:
+            //     the Phase 1 single-shot streaming path with the
+            //     typewriter observation card.
+            // Both ultimately produce a HealthReport that the persistence
+            // / identity-mismatch / paywall logic below can treat
+            // identically — the source of the report is invisible to
+            // everything downstream.
+            let finalReport: HealthReport
+            if subs.isSubscribed {
+                let stream = AgentRunner.shared.runAnalysis(
+                    image: image,
+                    cat: contextCat,
+                    recentRecords: recentRecords,
+                    recentLogs: recentLogs,
+                    todayNote: todayNote.isEmpty ? nil : todayNote,
+                    isEnglish: !lang.isChineseSelected
+                )
+                var captured: HealthReport?
+                // Stage 0 (observing) is active the moment the loop starts;
+                // pre-flag it so the UI shows the card immediately rather
+                // than waiting for the first network round-trip.
+                setAgentStage(id: "observing", current: true, done: false)
+                for try await event in stream {
+                    switch event {
+                    case .stage(let s):
+                        applyAgentStageEvent(s)
+                    case .toolStarted(let name):
+                        setAgentStage(id: name.rawValue, current: true, done: false)
+                    case .toolFinished(let name, let summary):
+                        setAgentStage(id: name.rawValue, current: false, done: true, summary: summary)
+                    case .trace:
+                        // Captured for future eval/observability work; UI
+                        // doesn't surface trace details in v1.
+                        break
+                    case .report(let r):
+                        // Mark synthesizing complete just before the report
+                        // takes over the visual real estate.
+                        setAgentStage(id: "synthesizing", current: false, done: true)
+                        captured = r
+                    }
                 }
+                guard let r = captured else { throw ClaudeError.invalidResponse }
+                finalReport = r
+            } else {
+                let stream = ClaudeService.shared.analyzeImageStreaming(
+                    image,
+                    cat: contextCat,
+                    recentRecords: recentRecords,
+                    recentLogs: recentLogs,
+                    todayNote: todayNote.isEmpty ? nil : todayNote,
+                    tier: tier,
+                    isEnglish: !lang.isChineseSelected
+                )
+                var captured: HealthReport?
+                for try await event in stream {
+                    switch event {
+                    case .observation(let chunk):
+                        streamingObservation += chunk
+                    case .observationDone:
+                        isObservationDone = true
+                    case .report(let r):
+                        captured = r
+                    }
+                }
+                guard let r = captured else { throw ClaudeError.invalidResponse }
+                finalReport = r
             }
-            guard let result = finalReport else {
-                throw ClaudeError.invalidResponse
-            }
+            let result = finalReport
             report = result
             reportIsForeignCat = isForeign
 
@@ -867,6 +1002,55 @@ struct CameraView: View {
             persistRecord(report: result, image: image, cat: activeCat)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Agent progress helpers
+
+    /// Mutate one stage in `agentStages` in-place. Animations on the array
+    /// pick up the diff and slide the checklist forward. We pass `done`
+    /// explicitly (rather than auto-marking previous stages) because
+    /// stages aren't strictly sequential — `get_diary_entries` could
+    /// resolve before `get_scan_history` if Claude reorders its tool
+    /// calls. Each event explicitly says "I'm done" or "I'm starting".
+    private func setAgentStage(id: String,
+                               current: Bool,
+                               done: Bool,
+                               summary: String? = nil) {
+        guard let idx = agentStages.firstIndex(where: { $0.id == id }) else { return }
+        agentStages[idx].isCurrent = current
+        agentStages[idx].isDone = done
+        if let summary { agentStages[idx].summary = summary }
+        // If anything is now "current", clear current flags on the others
+        // so the spinner only ever appears on one stage at a time.
+        if current {
+            for i in agentStages.indices where i != idx {
+                agentStages[i].isCurrent = false
+            }
+        }
+    }
+
+    /// Translate `AgentRunner.Stage` events into checklist state. Tool
+    /// rounds come through `.toolStarted/.toolFinished` and are handled
+    /// directly by the analyze loop — this only handles the bookend
+    /// stages (observing / synthesizing).
+    private func applyAgentStageEvent(_ stage: AgentRunner.Stage) {
+        switch stage {
+        case .observing:
+            setAgentStage(id: "observing", current: true, done: false)
+        case .gatheringContext:
+            // The previous stage (observing) is implicitly done as soon
+            // as the agent moves on to the tool-gathering phase.
+            setAgentStage(id: "observing", current: false, done: true)
+        case .synthesizing:
+            // All earlier stages are done by the time we get here.
+            for id in ["observing", "get_scan_history", "get_diary_entries"] {
+                if let i = agentStages.firstIndex(where: { $0.id == id }) {
+                    agentStages[i].isCurrent = false
+                    agentStages[i].isDone = true
+                }
+            }
+            setAgentStage(id: "synthesizing", current: true, done: false)
         }
     }
 
@@ -918,6 +1102,32 @@ struct CameraView: View {
 }
 
 // MARK: - Add Cat Sheet
+
+/// UI-side model for the four-stage Pro agent progress card. The
+/// CameraView mutates the array in place as `AgentEvent`s arrive from the
+/// runner — flipping isCurrent / isDone and stamping per-stage summaries.
+/// Made Identifiable + Equatable so SwiftUI can diff and animate the list.
+struct AgentStageState: Identifiable, Equatable {
+    let id: String                // stable stage key
+    let icon: String              // SF Symbol shown in the rest state
+    let labelZh: String
+    let labelEn: String
+    var isCurrent: Bool = false
+    var isDone: Bool = false
+    var summary: String? = nil    // populated when the stage completes
+
+    /// Default ordering — drives the visual checklist. The first three keys
+    /// match `AgentRunner.Stage` / `AgentRunner.ToolName` raw values so we
+    /// can look stages up by event without a separate mapping table.
+    static var initial: [AgentStageState] {
+        [
+            .init(id: "observing",        icon: "eye",          labelZh: "观察照片",   labelEn: "Observing the photo"),
+            .init(id: "get_scan_history", icon: "clock.arrow.circlepath", labelZh: "翻阅历史扫描", labelEn: "Reviewing scan history"),
+            .init(id: "get_diary_entries",icon: "book.closed",  labelZh: "查看日常日记", labelEn: "Checking the diary"),
+            .init(id: "synthesizing",     icon: "pencil.and.outline", labelZh: "综合写报告",  labelEn: "Composing the report"),
+        ]
+    }
+}
 
 private struct AddCatSheet: View {
     @Environment(\.modelContext) var modelContext
