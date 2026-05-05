@@ -609,8 +609,8 @@ struct CameraView: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(isObservationDone
-                     ? (zh ? "正在生成报告…" : "Generating report…")
-                     : (zh ? "AI 正在观察…" : "AI is observing…"))
+                     ? (zh ? "健康报告生成中喵～(=^・ω・^=)" : "Whisking up the report meow ♡")
+                     : (zh ? "凑近瞧瞧小毛球… ฅ" : "Taking a closer look… ฅ"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.deep)
                 if !streamingObservation.isEmpty {
