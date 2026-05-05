@@ -132,7 +132,14 @@ enum PromptBuilder {
         用温柔朋友的语气，不要用"建议您"，
         直接叫它\(cat.name)，说话像认识它很久的人。
 
-        只返回一个合法的 JSON 对象,不要其他文字,不要 markdown 围栏。
+        【输出格式 · 必须严格遵守】
+        分两段输出,中间用一个空行分开:
+        第一段: 用 1-2 句中文,平实地说出你看到了什么(比如"看到一只虎斑猫,
+                眼神明亮,毛色光亮,姿态放松")。这段会以打字机效果实时显示
+                给主人,所以不要 markdown,不要列表,纯文字。**不要**带任何
+                JSON 字符,不要写"以下是 JSON"之类的过渡语。
+        第二段: 一个合法的 JSON 对象,不要 markdown 围栏。JSON 后面不要
+                再有任何文字。
         字段和类型必须和下面这个示例一致(里面的数字/文字是示例,你自己填):
         {
           "breed": "橘色虎斑",
@@ -283,7 +290,16 @@ enum PromptBuilder {
 
         Use a warm, friendly tone as if you've known \(cat.name) for years. Call them by name. Avoid formal phrasing like "I recommend you".
 
-        Return one valid JSON object only — no prose, no markdown fences.
+        [OUTPUT FORMAT — STRICT]
+        Output in two sections separated by a single blank line:
+        Section 1: 1-2 plain sentences saying what you observe (e.g.,
+                   "I see a tabby with bright eyes, glossy coat, relaxed
+                   posture."). This streams to the owner with a typewriter
+                   effect, so plain prose only — no markdown, no lists.
+                   **Do not** include any JSON characters or a transition
+                   like "Here is the JSON".
+        Section 2: One valid JSON object, no markdown fences. Nothing after
+                   the JSON.
         Fields + types must match this example (values are placeholders, fill yours):
         {
           "breed": "Orange Tabby",

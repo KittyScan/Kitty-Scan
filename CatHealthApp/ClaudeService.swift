@@ -66,6 +66,144 @@ final class ClaudeService {
         return text
     }
 
+    // MARK: - Streaming primitives
+
+    /// One event in a streaming analyze response. Two phases:
+    ///   1. Claude's pre-JSON observation streams as `.observation(delta)` chunks
+    ///      (typewriter UX in CameraView).
+    ///   2. The moment we detect the opening `{` of the JSON object, we emit
+    ///      `.observationDone` once. The caller can transition the UI from
+    ///      "AI thinking" to "Generating report…".
+    ///   3. Once the upstream stream completes, the buffered text is parsed
+    ///      via `HealthReport.from(json:)` and emitted as `.report`.
+    enum AnalyzeStreamEvent {
+        case observation(String)
+        case observationDone
+        case report(HealthReport)
+    }
+
+    /// Streaming variant of `analyzeImage`. Hands back an AsyncThrowingStream
+    /// the caller drives with `for try await`. Sub-second TTFT in practice
+    /// (Worker round-trip + Anthropic SSE first byte).
+    @MainActor
+    func analyzeImageStreaming(_ image: UIImage,
+                               cat: Cat? = nil,
+                               recentRecords: [HistoryRecord] = [],
+                               recentLogs: [DailyLog] = [],
+                               todayNote: String? = nil,
+                               tier: Tier = .economy,
+                               isEnglish: Bool = false) -> AsyncThrowingStream<AnalyzeStreamEvent, Error> {
+        // Build the same payload as the buffered path so the report shape
+        // is byte-identical between the two — easier to A/B + fallback.
+        let resized = Self.downsampleForAnalysis(image, maxDimension: tier.maxImageDimension)
+        let base64 = resized.jpegData(compressionQuality: tier.jpegQuality)?.base64EncodedString()
+
+        let basePrompt: String
+        if let cat {
+            basePrompt = PromptBuilder.buildAnalysis(cat: cat, history: recentRecords,
+                                                     todayNote: todayNote,
+                                                     recentLogs: recentLogs,
+                                                     isEnglish: isEnglish)
+        } else {
+            basePrompt = isEnglish ? defaultPromptEN : defaultPromptZH
+        }
+        let prompt = applyLanguageOverride(to: basePrompt)
+        let token = SubscriptionManager.shared.appAccountToken.uuidString
+
+        return AsyncThrowingStream { continuation in
+            Task.detached {
+                do {
+                    guard let base64 else {
+                        throw ClaudeError.noImageData
+                    }
+
+                    let body: [String: Any] = [
+                        "prompt": prompt,
+                        "max_tokens": 1500,
+                        "stream": true,
+                        "image_base64": base64,
+                    ]
+
+                    var req = URLRequest(url: self.endpoint)
+                    req.httpMethod = "POST"
+                    req.setValue("application/json",       forHTTPHeaderField: "Content-Type")
+                    req.setValue("text/event-stream",      forHTTPHeaderField: "Accept")
+                    req.setValue(DeviceID.current,         forHTTPHeaderField: "X-Device-Id")
+                    req.setValue(tier.headerValue,         forHTTPHeaderField: "X-Tier")
+                    req.setValue(token, forHTTPHeaderField: "X-Account-Token")
+                    req.timeoutInterval = 90
+                    req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw ClaudeError.invalidResponse
+                    }
+                    if http.statusCode != 200 {
+                        // Mirror the buffered path's structured 429 surfacing.
+                        throw ClaudeError.apiError("HTTP \(http.statusCode)")
+                    }
+
+                    // Accumulators. `fullBuffer` holds every text delta in
+                    // arrival order — fed to HealthReport.from(json:) at end.
+                    // `observationDoneEmitted` flips the moment we see `{`,
+                    // so we stop forwarding observation deltas to the UI.
+                    var fullBuffer = ""
+                    var observationDoneEmitted = false
+
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data: ") else { continue }
+                        let payload = String(line.dropFirst(6))
+                        if payload.isEmpty || payload == "[DONE]" { continue }
+
+                        guard let data = payload.data(using: .utf8),
+                              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                        else { continue }
+
+                        // Anthropic SSE: only `content_block_delta` events with
+                        // type `text_delta` carry visible model text. Everything
+                        // else (message_start, ping, message_delta) is bookkeeping.
+                        if let type = event["type"] as? String, type == "content_block_delta",
+                           let delta = event["delta"] as? [String: Any],
+                           let kind = delta["type"] as? String, kind == "text_delta",
+                           let text = delta["text"] as? String, !text.isEmpty {
+
+                            fullBuffer += text
+
+                            if !observationDoneEmitted {
+                                if let braceIdx = text.firstIndex(of: "{") {
+                                    // Mixed chunk: trailing observation prose
+                                    // followed by the JSON's opening brace.
+                                    // Emit just the prose part, then the marker.
+                                    let head = String(text[..<braceIdx])
+                                    if !head.isEmpty {
+                                        continuation.yield(.observation(head))
+                                    }
+                                    continuation.yield(.observationDone)
+                                    observationDoneEmitted = true
+                                } else {
+                                    continuation.yield(.observation(text))
+                                }
+                            }
+                        }
+                    }
+
+                    // Stream finished — parse the full buffer as JSON. The
+                    // extractor is tolerant of leading observation prose.
+                    let report = try HealthReport.from(json: fullBuffer)
+                    if !observationDoneEmitted {
+                        // Defensive: if the model never emitted a `{` we still
+                        // want the UI to leave the streaming state cleanly.
+                        continuation.yield(.observationDone)
+                    }
+                    continuation.yield(.report(report))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
     // MARK: - Analysis with cat context
 
     /// Tier of the underlying Claude model picked for this analysis.
@@ -255,7 +393,10 @@ final class ClaudeService {
     // MARK: - Default prompts (no cat context)
 
     private let defaultPromptZH = """
-    请仔细分析这张猫咪照片,以严格的 JSON 格式返回健康报告。除 JSON 外不要输出任何文字。
+    请仔细分析这张猫咪照片,然后按以下格式输出:
+    1) 先用 1-2 句中文平实地说说你看到了什么(纯文字,无 markdown,无 JSON);
+    2) 空一行;
+    3) 输出严格 JSON 格式的健康报告。
 
     所有字符串字段(personality / eyesCondition / furCondition / postureCondition /
     suggestions / lifestyleDetail / summary)必须使用中文。
@@ -282,11 +423,15 @@ final class ClaudeService {
       "summary": "50 字以内的中文总结"
     }
 
-    只返回 JSON 对象。
+    JSON 后面不要再有任何文字。
     """
 
     private let defaultPromptEN = """
-    Please analyze this cat photo carefully and return a health report in strict JSON format. No other text outside the JSON.
+    Please analyze this cat photo carefully, then output in this format:
+    1) 1-2 plain sentences saying what you observe (plain prose, no markdown,
+       no JSON characters);
+    2) one blank line;
+    3) a strict JSON health report.
 
     All string fields (personality / eyesCondition / furCondition / postureCondition /
     suggestions / lifestyleDetail / summary) must be in English.
@@ -313,6 +458,6 @@ final class ClaudeService {
       "summary": "50-character summary of this check"
     }
 
-    Return ONLY the JSON object.
+    Nothing after the JSON.
     """
 }

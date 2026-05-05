@@ -22,6 +22,15 @@ struct CameraView: View {
     @FocusState private var todayNoteFocused: Bool
     @State private var isAnalyzing = false
 
+    // Streaming UX (P0). The pre-JSON observation Claude emits streams into
+    // `streamingObservation` and renders with a typewriter cursor below the
+    // Analyze button — this is what gives the user sub-second feedback that
+    // "AI is thinking", instead of a 5-second blank wait. `isObservationDone`
+    // flips once the JSON portion starts so the card transitions to a
+    // "Generating report…" state.
+    @State private var streamingObservation: String = ""
+    @State private var isObservationDone: Bool = false
+
     // Long-press on a cat surfaces a context menu with "Delete" — uses the
     // iOS-native long-press path (works inside ScrollView), no wiggle mode.
     @State private var pendingDeleteCat: Cat?
@@ -73,6 +82,9 @@ struct CameraView: View {
                     todayNoteSection
                     actionButtons
                     if let errorMessage { errorBanner(errorMessage) }
+                    if isAnalyzing && (!streamingObservation.isEmpty || isObservationDone) {
+                        streamingObservationCard
+                    }
                     if let report {
                         let displayCat: Cat? = reportIsForeignCat ? nil : selectedCat
                         HealthReportView(
@@ -578,6 +590,53 @@ struct CameraView: View {
         selectedCat.map { lang.loc("camera.analyzing") + " \($0.name)…" } ?? lang.loc("camera.analyzing")
     }
 
+    /// Inline card shown while a streaming analyze is in flight. Until the
+    /// JSON portion starts, it shows Claude's pre-JSON observation streaming
+    /// in with a typewriter cursor — the user sees text within ~1s instead
+    /// of staring at a 5s spinner. Once `isObservationDone` flips, the card
+    /// transitions to a "Generating report…" state.
+    private var streamingObservationCard: some View {
+        let zh = lang.isChineseSelected
+        return HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(theme.light.opacity(0.6))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.deep)
+                    .symbolEffect(.pulse, options: .repeating)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isObservationDone
+                     ? (zh ? "正在生成报告…" : "Generating report…")
+                     : (zh ? "AI 正在观察…" : "AI is observing…"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.deep)
+                if !streamingObservation.isEmpty {
+                    (Text(streamingObservation) + Text(isObservationDone ? "" : "▍").foregroundColor(theme.main))
+                        .font(.body)
+                        .foregroundStyle(theme.deep.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .animation(.easeOut(duration: 0.08), value: streamingObservation)
+                } else {
+                    ProgressView().tint(theme.deep).controlSize(.small)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(theme.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(theme.light.opacity(0.6), lineWidth: 0.5)
+                )
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
     private func errorBanner(_ message: String) -> some View {
         let friendly = friendlyErrorMessage(message)
         return VStack(alignment: .leading, spacing: 10) {
@@ -706,7 +765,17 @@ struct CameraView: View {
 
         isAnalyzing = true; errorMessage = nil; report = nil
         reportIsForeignCat = false
-        defer { isAnalyzing = false }
+        // Reset streaming UX state so a previous run's observation text
+        // doesn't flash before the new stream starts.
+        streamingObservation = ""
+        isObservationDone = false
+        defer {
+            isAnalyzing = false
+            // Tear down the streaming card cleanly. The report card takes
+            // over the visual real estate.
+            streamingObservation = ""
+            isObservationDone = false
+        }
 
         // Photo-quality pre-flight — skipped on the user-confirmed retry path
         // so they can override our detector if it's wrong. Runs entirely
@@ -754,7 +823,11 @@ struct CameraView: View {
             // Subscribers paid for accuracy; free/pack users get usable
             // analyses at a fraction of the cost.
             let tier: ClaudeService.Tier = subs.isSubscribed ? .premium : .economy
-            let result = try await ClaudeService.shared.analyzeImage(
+            // Streaming path (P0). Same payload as the buffered call, but the
+            // pre-JSON observation streams into `streamingObservation` so the
+            // user sees text within ~1s instead of waiting on a spinner. The
+            // final parsed HealthReport arrives as the terminal `.report` event.
+            let stream = ClaudeService.shared.analyzeImageStreaming(
                 image,
                 cat: contextCat,
                 recentRecords: recentRecords,
@@ -763,6 +836,22 @@ struct CameraView: View {
                 tier: tier,
                 isEnglish: !lang.isChineseSelected
             )
+            var finalReport: HealthReport?
+            for try await event in stream {
+                switch event {
+                case .observation(let chunk):
+                    // SwiftUI redraws on every append — the chunk size is
+                    // small enough (a few tokens) that this is visually fluid.
+                    streamingObservation += chunk
+                case .observationDone:
+                    isObservationDone = true
+                case .report(let r):
+                    finalReport = r
+                }
+            }
+            guard let result = finalReport else {
+                throw ClaudeError.invalidResponse
+            }
             report = result
             reportIsForeignCat = isForeign
 
