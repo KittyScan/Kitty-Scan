@@ -16,9 +16,9 @@ import Foundation
 ///     pointless.
 ///   • Worker stays stateless per request — same auth + rate-limit
 ///     defenses as `/analyze`, no session storage.
-///   • Cost: only the final consume-turn decrements the user's quota
-///     (Worker enforces via `consume: true` flag). 1 photo = 1 Pro slot,
-///     even with 4 internal turns.
+///   • Cost: the iOS client calls /consume-analysis exactly once after
+///     the loop completes successfully, so a 4-step run still costs the
+///     user just one Pro slot — not 4. (See `consumeOnce`.)
 ///
 /// Free + pack users do NOT use this path — they get the Phase 1
 /// streaming single-shot. Agent mode is the Pro-tier differentiator.
