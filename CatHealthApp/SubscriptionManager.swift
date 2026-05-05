@@ -338,11 +338,30 @@ final class SubscriptionManager {
         }
     }
 
+    /// Self-heal — re-POSTs every current StoreKit entitlement to the
+    /// Worker's /verify-receipt. Idempotent (Worker dedupes by
+    /// transactionId via `isTransactionApplied`), so calling this on
+    /// demand is cheap and safe. We trigger it from ClaudeService /
+    /// AgentRunner the moment a /analyze or /agent call returns HTTP 402
+    /// — that's the moment we *know* the iOS-believed entitlement and the
+    /// server ledger have drifted. Callers retry the original request once
+    /// after this finishes.
+    ///
+    /// Without this, a real user whose original purchase /verify-receipt
+    /// POST failed (transient network blip, Apple API delay, Worker cold
+    /// start) would see "you paid but you can't use the app". With this,
+    /// the next analyze attempt silently re-syncs and just works.
+    func resyncEntitlementsWithWorker() async {
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let tx) = result else { continue }
+            await reportPurchaseToWorker(tx)
+        }
+    }
+
     /// POSTs the freshly purchased transaction's JWS to the worker so the
-    /// server-side ledger can be populated immediately. Best-effort: if it
-    /// fails the worker will pick up the same transaction lazily on the next
-    /// `/analyze` call (the iOS client always attaches the latest verified
-    /// receipt). Don't block the UI on this.
+    /// server-side ledger can be populated immediately. Best-effort here too,
+    /// but `resyncEntitlementsWithWorker()` (called on 402 from analyze)
+    /// is the safety net for transient failures.
     private func reportPurchaseToWorker(_ tx: Transaction) async {
         guard let url = URL(string: "https://carmel-worker.8fn98bvpdb.workers.dev/verify-receipt") else { return }
         var req = URLRequest(url: url)

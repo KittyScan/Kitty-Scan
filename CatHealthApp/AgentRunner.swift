@@ -385,11 +385,22 @@ final class AgentRunner {
         req.timeoutInterval = 60
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else { throw ClaudeError.invalidResponse }
-        if http.statusCode != 200 {
+        // Self-heal on 402 — same pattern as ClaudeService.proxy /
+        // analyzeImageStreaming. /agent gates on entitlement.tier === 'sub'
+        // AND on quota; both can disagree with iOS local state if a past
+        // /verify-receipt POST failed. Re-sync every verified StoreKit
+        // transaction and retry once before propagating the error.
+        var (data, response) = try await URLSession.shared.data(for: req)
+        var http = response as? HTTPURLResponse
+        if http?.statusCode == 402 {
+            await SubscriptionManager.shared.resyncEntitlementsWithWorker()
+            (data, response) = try await URLSession.shared.data(for: req)
+            http = response as? HTTPURLResponse
+        }
+        guard let httpFinal = http else { throw ClaudeError.invalidResponse }
+        if httpFinal.statusCode != 200 {
             let text = String(data: data, encoding: .utf8) ?? "unknown"
-            throw ClaudeError.apiError("HTTP \(http.statusCode): \(text)")
+            throw ClaudeError.apiError("HTTP \(httpFinal.statusCode): \(text)")
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

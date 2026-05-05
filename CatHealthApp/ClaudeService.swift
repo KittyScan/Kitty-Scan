@@ -16,6 +16,26 @@ final class ClaudeService {
     private func proxy(imageBase64: String?, prompt: String,
                        maxTokens: Int = 1500,
                        tier: Tier = .economy) async throws -> String {
+        // First attempt. On HTTP 402 (server says quota exhausted) we
+        // assume iOS-Worker entitlement state has drifted — re-sync every
+        // verified StoreKit transaction and retry exactly once. Without
+        // this, a real user whose original /verify-receipt POST quietly
+        // failed (network blip, Apple API delay) would see "you paid but
+        // can't use the app" until they reinstalled.
+        do {
+            return try await executeProxyOnce(imageBase64: imageBase64, prompt: prompt,
+                                              maxTokens: maxTokens, tier: tier)
+        } catch ClaudeError.apiError(let msg) where msg.contains("HTTP 402") {
+            await SubscriptionManager.shared.resyncEntitlementsWithWorker()
+            return try await executeProxyOnce(imageBase64: imageBase64, prompt: prompt,
+                                              maxTokens: maxTokens, tier: tier)
+        }
+    }
+
+    /// Single-shot of the proxy call. `proxy` wraps this with the 402
+    /// self-heal so callers don't have to know about retry semantics.
+    private func executeProxyOnce(imageBase64: String?, prompt: String,
+                                  maxTokens: Int, tier: Tier) async throws -> String {
         var body: [String: Any] = [
             "prompt": prompt,
             "max_tokens": maxTokens,
@@ -134,13 +154,25 @@ final class ClaudeService {
                     req.timeoutInterval = 90
                     req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
-                    guard let http = response as? HTTPURLResponse else {
+                    // First attempt. On HTTP 402 we re-sync StoreKit
+                    // entitlements with the Worker and retry exactly once —
+                    // catches the case where /verify-receipt failed at
+                    // purchase time and left the user "paid client-side,
+                    // unknown server-side". Identical pattern to
+                    // ClaudeService.proxy's retry wrapper.
+                    var (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    var http = response as? HTTPURLResponse
+                    if http?.statusCode == 402 {
+                        await SubscriptionManager.shared.resyncEntitlementsWithWorker()
+                        (bytes, response) = try await URLSession.shared.bytes(for: req)
+                        http = response as? HTTPURLResponse
+                    }
+                    guard let httpFinal = http else {
                         throw ClaudeError.invalidResponse
                     }
-                    if http.statusCode != 200 {
+                    if httpFinal.statusCode != 200 {
                         // Mirror the buffered path's structured 429 surfacing.
-                        throw ClaudeError.apiError("HTTP \(http.statusCode)")
+                        throw ClaudeError.apiError("HTTP \(httpFinal.statusCode)")
                     }
 
                     // Accumulators. `fullBuffer` holds every text delta in
