@@ -551,34 +551,73 @@ struct CameraView: View {
     }
 
     /// Tiny footer showing how many analyses remain. Tappable → paywall, so the
-    /// upsell is one tap away from anywhere on the camera screen. Shown only
-    /// when remaining is finite — subscribers see it during the period; we hide
-    /// it once their reset comes back.
+    /// upsell is one tap away from anywhere on the camera screen. When the
+    /// remaining count is low (≤ 5 for any tier), the row promotes itself
+    /// to a soft warm pill with cute kitty copy so the user notices before
+    /// they hit zero.
     @ViewBuilder
     private var quotaIndicator: some View {
         let zh = lang.isChineseSelected
         switch subs.tier {
         case .free:
             let left = max(0, SubscriptionManager.freeLifetimeAnalyses - subs.freeUsed)
-            Button {
-                paywallReason = left > 0 ? .freeExhausted : .freeExhausted
-            } label: {
-                Text(zh ? "免费体验剩 \(left) 次 · 升级 Pro" : "\(left) free analyses left · Upgrade")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            quotaPill(
+                text: zh ? "免费体验剩 \(left) 次 · 升级 Pro"
+                         : "\(left) free analyses left · Upgrade",
+                isLow: left <= 1,
+                lowText: zh ? "只剩 \(left) 次免费啦 ฅ 想充值喵?"
+                            : "Only \(left) free left ฅ Top up?",
+            ) { paywallReason = .freeExhausted }
         case .packCredits(let n):
-            Button { paywallReason = .packEmpty } label: {
-                Text(zh ? "次卡剩 \(n) 次 · 看方案" : "\(n) pack credits left · View plans")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
+            quotaPill(
+                text: zh ? "次卡剩 \(n) 次 · 看方案"
+                         : "\(n) pack credits left · View plans",
+                isLow: n <= 5,
+                lowText: zh ? "次卡只剩 \(n) 次了喵～想再续一包吗 (=^・ω・^=)"
+                            : "Only \(n) credits left meow～ top up? (=^・ω・^=)",
+            ) { paywallReason = .packEmpty }
         case .subscriber:
             let left = max(0, SubscriptionManager.subMonthlyAnalyses - subs.subAnalyzesUsed)
-            Text(zh ? "本月 Pro 还剩 \(left) 次分析" : "Pro · \(left) analyses left this month")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            quotaPill(
+                text: zh ? "本月 Pro 还剩 \(left) 次分析"
+                         : "Pro · \(left) analyses left this month",
+                isLow: left <= 5,
+                lowText: zh ? "本月只剩 \(left) 次 Pro 配额啦 ♡ 加包次卡顶一下?"
+                            : "Only \(left) Pro analyses this month ♡ Top up with a pack?",
+            ) { paywallReason = .subAnalyzeQuotaExhausted }
         }
+    }
+
+    /// Quota footer pill. Two visual states:
+    ///   • Normal — small grey caption (existing behavior).
+    ///   • Low — soft warm capsule, theme.deep text, cute copy. Tap → paywall.
+    @ViewBuilder
+    private func quotaPill(text: String,
+                           isLow: Bool,
+                           lowText: String,
+                           onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            if isLow {
+                HStack(spacing: 6) {
+                    Text("ฅ").font(.system(size: 13))
+                    Text(lowText)
+                        .font(.caption.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundColor(theme.deep)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule().fill(theme.light.opacity(0.55))
+                        .overlay(Capsule().strokeBorder(theme.accent.opacity(0.5), lineWidth: 0.8))
+                )
+            } else {
+                Text(text)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var analyzeButtonLabel: String {
@@ -1001,7 +1040,43 @@ struct CameraView: View {
 
             persistRecord(report: result, image: image, cat: activeCat)
         } catch {
-            errorMessage = error.localizedDescription
+            // 402 from the server (after self-heal already retried once)
+            // means the user really is out of quota — show the cute paywall
+            // copy instead of an apologetic error banner. The user paid /
+            // tried hard / something — they shouldn't see a generic failure
+            // for what is fundamentally an upsell moment.
+            if let mapped = paywallReason(forServerError: error) {
+                paywallReason = mapped
+            } else {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Translate a 402 from /analyze or /agent into the right
+    /// `BlockReason` so the user sees the paywall (cute kitty copy)
+    /// instead of "Analysis failed". Returns nil for non-402 errors.
+    private func paywallReason(forServerError error: Error) -> SubscriptionManager.GateResult.BlockReason? {
+        guard case ClaudeError.apiError(let msg) = error,
+              msg.contains("HTTP 402") else { return nil }
+        // Parse the JSON body the Worker emits:
+        //   {"error":"quota_exhausted","reason":"pack_empty","tier":"pack"}
+        //   {"error":"pro_required","tier":"pack"}
+        let reason: String? = {
+            guard let braceIdx = msg.firstIndex(of: "{"),
+                  let data = String(msg[braceIdx...]).data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return nil }
+            if let r = json["reason"] as? String { return r }
+            if (json["error"] as? String) == "pro_required" { return "pro_required" }
+            return nil
+        }()
+        switch reason {
+        case "free_exhausted":     return .freeExhausted
+        case "pack_empty":         return .packEmpty
+        case "sub_analyze_quota":  return .subAnalyzeQuotaExhausted
+        case "pro_required":       return .chatRequiresSubscription
+        default:                   return .packEmpty   // safe default — surfaces all three IAPs
         }
     }
 
