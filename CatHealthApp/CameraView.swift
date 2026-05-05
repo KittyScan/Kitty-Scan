@@ -940,6 +940,12 @@ private struct AddCatSheet: View {
     @State private var selectedAgeKey = "cat.age.1to3"
     @State private var didApplyPrefill = false
 
+    /// Tracks which TextField is currently focused so the inline hide-keyboard
+    /// button (same blue style as HealthReportView's chat) can show above the
+    /// keyboard while typing.
+    private enum CatField: Hashable { case name, breed, issue }
+    @FocusState private var focusedField: CatField?
+
     private var agePicker: [(key: String, value: String)] {
         [
             ("cat.age.0to1", "0-1"),
@@ -968,7 +974,9 @@ private struct AddCatSheet: View {
                 }
                 Section(lang.loc("cat.add.basic")) {
                     TextField(lang.loc("cat.name.placeholder"), text: $name)
+                        .focused($focusedField, equals: .name)
                     TextField(lang.loc("cat.breed.placeholder"), text: $breed)
+                        .focused($focusedField, equals: .breed)
                     Picker(lang.loc("cat.age.picker"), selection: $selectedAgeKey) {
                         ForEach(agePicker, id: \.key) { item in
                             Text(lang.loc(item.key)).tag(item.key)
@@ -983,12 +991,38 @@ private struct AddCatSheet: View {
                     .onDelete { knownIssues.remove(atOffsets: $0) }
                     HStack {
                         TextField(lang.loc("cat.issues.placeholder"), text: $issueInput)
+                            .focused($focusedField, equals: .issue)
                         Button(lang.loc("cat.issues.add")) {
                             let t = issueInput.trimmingCharacters(in: .whitespaces)
                             if !t.isEmpty { knownIssues.append(t); issueInput = "" }
                         }
                         .disabled(issueInput.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
+                }
+            }
+            // Inline blue hide-keyboard button — same pattern as HealthReportView's
+            // chat: only shows while a TextField is focused, sits in the safe-area
+            // inset so it floats above the keyboard rather than fighting the Form.
+            .safeAreaInset(edge: .bottom) {
+                if focusedField != nil {
+                    Button { focusedField = nil } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.down.circle.fill")
+                            Text(lang.isChineseSelected ? "收起键盘" : "Hide keyboard")
+                        }
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Theme.info)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
                 }
             }
             .navigationTitle(lang.loc("cat.add.title"))
