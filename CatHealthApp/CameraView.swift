@@ -98,20 +98,6 @@ struct CameraView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationBarHidden(true)
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button {
-                        todayNoteFocused = false
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.down.circle.fill")
-                            Text(lang.isChineseSelected ? "收起键盘" : "Hide keyboard")
-                        }
-                        .font(.body.weight(.semibold))
-                    }
-                }
-            }
         }
         .confirmationDialog(lang.loc("camera.source.title"),
                             isPresented: $showImageSourceSheet,
