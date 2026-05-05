@@ -655,6 +655,11 @@ private struct CatEditSheet: View {
     @State private var showLibrary = false
     @State private var tempImage: UIImage?
 
+    /// Tracks which TextField is focused so the inline hide-keyboard button
+    /// (same blue style as chat / AddCatSheet / Onboarding) can show.
+    private enum EditField: Hashable { case name, birth }
+    @FocusState private var focusedField: EditField?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -688,6 +693,7 @@ private struct CatEditSheet: View {
                     LabeledContent(zh ? "名字" : "Name") {
                         TextField(zh ? "名字" : "Name", text: $cat.name)
                             .multilineTextAlignment(.trailing)
+                            .focused($focusedField, equals: .name)
                     }
                     LabeledContent(zh ? "性别" : "Sex") {
                         Picker("", selection: Binding(
@@ -706,12 +712,34 @@ private struct CatEditSheet: View {
                             set: { cat.age = $0.isEmpty ? nil : $0 }
                         ))
                         .multilineTextAlignment(.trailing)
+                        .focused($focusedField, equals: .birth)
                     }
                     Toggle(zh ? "已绝育" : "Neutered", isOn: $cat.neuter)
                 }
             }
             .navigationTitle(zh ? "编辑档案" : "Edit profile")
             .navigationBarTitleDisplayMode(.inline)
+            // Inline blue hide-keyboard button — consistent with the rest of
+            // the app (chat / AddCatSheet / Onboarding).
+            .safeAreaInset(edge: .bottom) {
+                if focusedField != nil {
+                    Button { focusedField = nil } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.down.circle.fill")
+                            Text(zh ? "收起键盘" : "Hide keyboard")
+                        }
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.info))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(zh ? "取消" : "Cancel") { dismiss() }

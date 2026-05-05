@@ -426,6 +426,28 @@ private struct ProfileCreateStep: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
+        // Inline blue hide-keyboard button — same pattern as the chat / AddCatSheet:
+        // floats above the keyboard while a TextField is focused, sits in the
+        // safe-area inset so it doesn't fight the ScrollView layout.
+        .safeAreaInset(edge: .bottom) {
+            if focusedField != nil {
+                Button { focusedField = nil } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.down.circle.fill")
+                        Text(zh ? "收起键盘" : "Hide keyboard")
+                    }
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Theme.info))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .transition(.opacity)
+            }
+        }
         .confirmationDialog(zh ? "选头像" : "Pick avatar",
                             isPresented: $showPhotoSheet,
                             titleVisibility: .visible) {
