@@ -28,6 +28,7 @@ final class AgentRunner {
     private init() {}
 
     private let endpoint = URL(string: "https://carmel-worker.8fn98bvpdb.workers.dev/agent")!
+    private let consumeEndpoint = URL(string: "https://carmel-worker.8fn98bvpdb.workers.dev/consume-analysis")!
 
     // MARK: - Public events
 
@@ -73,11 +74,12 @@ final class AgentRunner {
                      recentLogs: [DailyLog],
                      todayNote: String?,
                      isEnglish: Bool) -> AsyncThrowingStream<AgentEvent, Error> {
-        // Encode image once (Sonnet vision tier). Every turn re-includes
-        // it implicitly via the messages array, so we only pay the encode
-        // cost once.
-        let resized = ClaudeService.downsampleForAnalysis(image, maxDimension: 1568)
-        let imageData = resized.jpegData(compressionQuality: 0.75)
+        // Encode image once at Haiku's economy ceiling (768px / q0.65).
+        // The agent runs against Haiku 4.5 server-side, which doesn't
+        // benefit from the larger Sonnet-tier image — and the smaller
+        // payload also cuts ~3× off per-turn input token cost.
+        let resized = ClaudeService.downsampleForAnalysis(image, maxDimension: 768)
+        let imageData = resized.jpegData(compressionQuality: 0.65)
         let base64 = imageData?.base64EncodedString()
 
         let systemPrompt = AgentPromptBuilder.systemPrompt(cat: cat, todayNote: todayNote, isEnglish: isEnglish)
@@ -129,7 +131,6 @@ final class AgentRunner {
                             systemPrompt: systemPrompt,
                             messages: messages,
                             tools: toolsForTurn,
-                            consume: false,    // final consume-turn happens after
                             maxTokens: 1500,
                         )
                         trace.totalTurns += 1
@@ -195,31 +196,19 @@ final class AgentRunner {
                         throw ClaudeError.invalidResponse
                     }
 
-                    // Synthesize: the previous loop ended on a text-only turn,
-                    // but it didn't get to consume the user's quota slot (we
-                    // pass consume:false on every loop turn so a 4-step run
-                    // doesn't 4x the bill). Send one more lightweight no-op
-                    // turn just to flag consume:true to the Worker. This costs
-                    // ~50 tokens but keeps the consume contract clean.
                     await continuation.yield(.stage(.synthesizing))
-                    let consumeAck = try await Self.callAgent(
-                        endpoint: self.endpoint,
-                        accountToken: token,
-                        systemPrompt: systemPrompt,
-                        messages: messages + [
-                            ["role": "assistant",
-                             "content": [["type": "text", "text": finalText]]],
-                            ["role": "user",
-                             "content": [["type": "text", "text": "ok"]]],
-                        ],
-                        tools: nil,
-                        consume: true,
-                        maxTokens: 16,
-                    )
-                    trace.inputTokens += consumeAck.usage.inputTokens
-                    trace.outputTokens += consumeAck.usage.outputTokens
 
+                    // Parse first — if the model gave us an unparseable response,
+                    // we don't want to charge the user for it. Decrement only on
+                    // a fully successful run.
                     let report = try HealthReport.from(json: finalText)
+
+                    // Decrement quota out-of-band. /consume-analysis is a tiny
+                    // KV-only endpoint (no Anthropic call) so the cost of this
+                    // round-trip is negligible. If the network drops here the
+                    // user keeps their analysis — acceptable edge case.
+                    try? await Self.consumeOnce(endpoint: self.consumeEndpoint, accountToken: token)
+
                     trace.durationMs = Int(Date().timeIntervalSince(started) * 1000)
                     await continuation.yield(.trace(trace))
                     await continuation.yield(.report(report))
@@ -375,7 +364,6 @@ final class AgentRunner {
                                   systemPrompt: String,
                                   messages: [[String: Any]],
                                   tools: [[String: Any]]?,
-                                  consume: Bool,
                                   maxTokens: Int) async throws -> AgentResponse {
         // Anthropic's Messages API accepts a top-level `system` string AND a
         // messages array. The Worker's /agent endpoint passes both straight
@@ -383,7 +371,6 @@ final class AgentRunner {
         var body: [String: Any] = [
             "messages": messages,
             "max_tokens": maxTokens,
-            "consume": consume,
             "stream": false,
             "system": systemPrompt,
         ]
@@ -446,6 +433,18 @@ final class AgentRunner {
             }
         }
         return AgentResponse(content: blocks, usage: usage)
+    }
+
+    /// Tiny KV-only call to bill the user for one analysis. Best-effort —
+    /// we eat network errors so a failed bookkeeping call doesn't roll back
+    /// a successful agent run that the user already saw.
+    private static func consumeOnce(endpoint: URL, accountToken: String) async throws {
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue(accountToken, forHTTPHeaderField: "X-Account-Token")
+        req.setValue(DeviceID.current, forHTTPHeaderField: "X-Device-Id")
+        req.timeoutInterval = 10
+        _ = try await URLSession.shared.data(for: req)
     }
 
     private static func jsonString(_ object: Any) -> String {
