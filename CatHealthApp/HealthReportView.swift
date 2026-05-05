@@ -26,6 +26,14 @@ struct HealthReportView: View {
     @State private var chatPaywallReason: SubscriptionManager.GateResult.BlockReason?
     @State private var showMethodology = false
 
+    /// Per-report 👍/👎. Tracked locally so the footer can switch to a
+    /// "thanks ♡" confirmation after submission. Routed through the same
+    /// /feedback Worker endpoint as the bug-report flow with category
+    /// "rating" — server-side that's just another row in the KV ledger
+    /// (prefix `fb:`) for later aggregation.
+    @State private var ratingSubmitted: Int? = nil   // -1 / +1, nil = unrated
+    @State private var showRatingReason = false      // 👎 reason picker
+
     var body: some View {
         if isNoCatDetected {
             noCatView
@@ -111,9 +119,14 @@ struct HealthReportView: View {
             }
             if !report.warnings.isEmpty { warningsCard }
             if cat != nil { chatSection }
+            ratingFooter
         }
         .padding(.horizontal)
         .padding(.bottom, 20)
+        .sheet(isPresented: $showRatingReason) {
+            ratingReasonSheet
+                .presentationDetents([.medium])
+        }
         .sheet(isPresented: $showShareSheet) {
             if let img = shareImage {
                 ActivitySheet(items: [img])
@@ -671,6 +684,166 @@ struct HealthReportView: View {
         } else {
             showShareSheet = true
         }
+    }
+
+    // MARK: - Rating footer
+
+    /// Bottom-of-report 👍 / 👎. Switches to a "thanks ♡" pill the moment
+    /// the user picks one — we don't want to badger them on subsequent
+    /// scrolls of the same report. State is per-view, so opening another
+    /// past report from History lets that one be rated independently.
+    private var ratingFooter: some View {
+        let zh = lang.isChineseSelected
+        return Group {
+            if let r = ratingSubmitted {
+                HStack(spacing: 6) {
+                    Text(r > 0 ? "♡" : "ฅ").font(.system(size: 14))
+                    Text(zh ? "感谢喵～收到了" : "Thanks meow ♡")
+                        .font(.caption.weight(.medium))
+                }
+                .foregroundColor(theme.deep.opacity(0.75))
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 10) {
+                    Text(zh ? "这次报告有用吗?" : "Was this report helpful?")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 14) {
+                        Button {
+                            ratingSubmitted = 1
+                            Task { await submitRating(score: 1, reason: nil) }
+                        } label: {
+                            ratingPill(emoji: "😺", label: zh ? "有用" : "Helpful", tint: theme.accent)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            // Don't lock state until they pick a reason — lets
+                            // them dismiss the sheet to back out of the 👎.
+                            showRatingReason = true
+                        } label: {
+                            ratingPill(emoji: "🙀", label: zh ? "差点" : "Off", tint: theme.main)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: ratingSubmitted)
+    }
+
+    private func ratingPill(emoji: String, label: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(emoji).font(.system(size: 16))
+            Text(label).font(.subheadline.weight(.medium))
+        }
+        .foregroundColor(theme.deep)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule().fill(tint.opacity(0.18))
+                .overlay(Capsule().strokeBorder(tint.opacity(0.4), lineWidth: 0.8))
+        )
+    }
+
+    /// 👎 reason picker. Four common reasons + free-skip. Tapping any
+    /// option sets `ratingSubmitted = -1` and submits; tapping outside
+    /// (sheet dismiss) cancels — the user stays unrated.
+    private var ratingReasonSheet: some View {
+        let zh = lang.isChineseSelected
+        let reasons: [(zh: String, en: String, key: String)] = [
+            ("不太准确",     "Not accurate",        "inaccurate"),
+            ("太啰嗦",       "Too verbose",         "verbose"),
+            ("漏了关键信息", "Missed key info",     "missing_info"),
+            ("不太能看懂",   "Hard to understand",  "unclear"),
+        ]
+        return VStack(alignment: .leading, spacing: 14) {
+            Text(zh ? "怎么不太对呢喵?" : "What was off?")
+                .font(.title3.weight(.bold))
+                .foregroundColor(theme.deep)
+                .padding(.top, 8)
+            Text(zh ? "选个原因,帮我们让报告更好喵～"
+                    : "Pick a reason — helps us make reports better meow ♡")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 8) {
+                ForEach(reasons, id: \.key) { r in
+                    Button {
+                        ratingSubmitted = -1
+                        showRatingReason = false
+                        Task { await submitRating(score: -1, reason: r.key) }
+                    } label: {
+                        HStack {
+                            Text(zh ? r.zh : r.en)
+                                .foregroundColor(theme.deep)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(theme.main.opacity(0.5))
+                                .font(.caption)
+                        }
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button {
+                    ratingSubmitted = -1
+                    showRatingReason = false
+                    Task { await submitRating(score: -1, reason: "skipped") }
+                } label: {
+                    Text(zh ? "其它,不想说 ฅ" : "Other / skip ฅ")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// POST to the existing /feedback endpoint with category=rating. The
+    /// Worker just stores it under the `fb:` KV prefix — same place as
+    /// bug reports — so we can aggregate later in the eval pipeline.
+    private func submitRating(score: Int, reason: String?) async {
+        guard let url = URL(string: "https://carmel-worker.8fn98bvpdb.workers.dev/feedback")
+        else { return }
+        let infoBundle = Bundle.main.infoDictionary
+        let appVersion = infoBundle?["CFBundleShortVersionString"] as? String
+        let appBuild = infoBundle?["CFBundleVersion"] as? String
+
+        let text: String = {
+            // Min 2 chars enforced server-side. Always ≥ 2 here.
+            let glyph = score > 0 ? "👍" : "👎"
+            if let reason, !reason.isEmpty { return "\(glyph) \(reason)" }
+            return glyph
+        }()
+
+        let payload: [String: Any] = [
+            "category": "rating",
+            "text": text,
+            "appVersion": appVersion ?? "",
+            "appBuild": appBuild ?? "",
+            "iosVersion": UIDevice.current.systemVersion,
+            "language": lang.currentLanguage,
+        ]
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(SubscriptionManager.shared.appAccountToken.uuidString,
+                     forHTTPHeaderField: "X-Account-Token")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        req.timeoutInterval = 10
+        _ = try? await URLSession.shared.data(for: req)
     }
 }
 
