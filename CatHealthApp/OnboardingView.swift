@@ -146,7 +146,14 @@ private struct BreedPickerStep: View {
     @Bindable var flow: OnboardingFlow
     let zh: Bool
 
+    @Environment(SubscriptionManager.self) private var subs
+    @State private var paywallReason: SubscriptionManager.GateResult.BlockReason?
+
     private let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    /// First entry in `CatThemes.all` is the free "default" theme (mirrors the
+    /// gating in SettingsView's ThemePickerSheet — single source of truth).
+    private var freeAllowedID: String { CatThemes.all.first?.id ?? "default" }
 
     var body: some View {
         let th = flow.theme
@@ -188,9 +195,20 @@ private struct BreedPickerStep: View {
 
                     LazyVGrid(columns: cols, spacing: 10) {
                         ForEach(CatThemes.all) { t in
-                            BreedCard(theme: t, selected: t.id == flow.breedId, zh: zh) {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                    flow.breedId = t.id
+                            // First-time users only get the default theme;
+                            // every other palette is unlocked by any purchase
+                            // (pack OR sub) — same gate as SettingsView.
+                            let locked = !subs.hasPremiumAccess && t.id != freeAllowedID
+                            BreedCard(theme: t,
+                                      selected: t.id == flow.breedId,
+                                      locked: locked,
+                                      zh: zh) {
+                                if locked {
+                                    paywallReason = .themeLocked
+                                } else {
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                        flow.breedId = t.id
+                                    }
                                 }
                             }
                         }
@@ -214,12 +232,19 @@ private struct BreedPickerStep: View {
                 }
             }
         }
+        // Show paywall when the user taps a locked theme. `themeLocked` shows
+        // the cute "this kitty theme is locked ฅ" copy already wired in
+        // PaywallView, with all three IAPs available to unlock.
+        .sheet(item: $paywallReason) { reason in
+            PaywallView(reason: reason)
+        }
     }
 }
 
 private struct BreedCard: View {
     let theme: CatTheme
     let selected: Bool
+    let locked: Bool
     let zh: Bool
     let action: () -> Void
 
@@ -228,20 +253,24 @@ private struct BreedCard: View {
             VStack(spacing: 6) {
                 CatAvatar(theme: theme, size: 50, showRing: false)
                     .padding(.top, 4)
+                    .opacity(locked ? 0.4 : 1)
                 Text(theme.name(zh: zh))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.deep)
                     .lineLimit(1)
+                    .opacity(locked ? 0.5 : 1)
                 Text(theme.mood(zh: zh))
                     .font(.system(size: 10))
                     .foregroundStyle(theme.main.opacity(0.75))
                     .lineLimit(1)
+                    .opacity(locked ? 0.5 : 1)
                 HStack(spacing: 2) {
                     ForEach(Array(theme.swatches.enumerated()), id: \.offset) { _, c in
                         Circle().fill(c).frame(width: 7, height: 7)
                     }
                 }
                 .padding(.top, 2)
+                .opacity(locked ? 0.5 : 1)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
@@ -261,6 +290,16 @@ private struct BreedCard: View {
                         .foregroundStyle(theme.bg)
                         .frame(width: 18, height: 18)
                         .background(Circle().fill(theme.deep))
+                        .offset(x: -6, y: 6)
+                } else if locked {
+                    // Same lock badge as SettingsView's BreedCard — orange
+                    // padlock so the gating reads as "unlock-with-purchase"
+                    // rather than "broken / not available in your region".
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Circle().fill(Color.orange))
                         .offset(x: -6, y: 6)
                 }
             }
