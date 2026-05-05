@@ -65,6 +65,15 @@ struct CameraView: View {
     /// the user confirms what to do with it.
     @State private var reportIsForeignCat = false
 
+    /// Low-quota nudge alert. Triggered after a successful analysis when
+    /// the user just crossed into "running low" territory. We show it at
+    /// most once per threshold per app session (not on every subsequent
+    /// analyze) — `lowQuotaThresholdsShown` tracks the levels we've
+    /// already nudged at so the user doesn't get popup-spam.
+    @State private var showLowQuotaSheet: Bool = false
+    @State private var lowQuotaSheetCount: Int = 0
+    @State private var lowQuotaThresholdsShown: Set<Int> = []
+
     // Photo-quality pre-flight: when the on-device check flags a problem
     // (no cat / too dark / too bright), we warn the user before spending an
     // API call. They can override and continue if they think the algorithm
@@ -212,6 +221,25 @@ struct CameraView: View {
         }
         .sheet(item: $paywallReason) { reason in
             PaywallView(reason: reason)
+        }
+        // Low-quota proactive nudge. Triggered after a successful analysis
+        // that drops the user to a 5/3/1 threshold. Cute kitty copy + two
+        // buttons: think-about-it-later or jump straight to the paywall
+        // (which already shows discounted MSRP-strikethrough prices).
+        .alert(
+            lang.isChineseSelected
+                ? "只剩 \(lowQuotaSheetCount) 次啦喵 ฅ"
+                : "\(lowQuotaSheetCount) left meow ฅ",
+            isPresented: $showLowQuotaSheet
+        ) {
+            Button(lang.isChineseSelected ? "续命喵 ♡ (限时优惠)" : "Top up meow ♡ (limited offer)") {
+                paywallReason = lowQuotaPaywallReason()
+            }
+            Button(lang.isChineseSelected ? "再想想 ฅ" : "Maybe later ฅ", role: .cancel) {}
+        } message: {
+            Text(lang.isChineseSelected
+                 ? "再用几次就要见底了～现在续费有限时折扣,趁机囤一波?"
+                 : "Almost out — top up now and grab the limited discount before it's gone?")
         }
         .alert(
             qualityAlertTitle,
@@ -1021,6 +1049,11 @@ struct CameraView: View {
             // either way.
             subs.consumeAnalyze()
 
+            // Heads-up nudge: now that consumeAnalyze() has decremented the
+            // counters, check whether the user just dropped to a "warn me"
+            // threshold (5/3/1 left) and pop the cute reminder once.
+            maybeShowLowQuotaSheet()
+
             if isForeign {
                 pendingReport = result
                 pendingImage = image
@@ -1050,6 +1083,45 @@ struct CameraView: View {
             } else {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    /// Decide whether to nudge the user with the low-quota alert. Called
+    /// right after `subs.consumeAnalyze()` so the count is fresh. We
+    /// nudge once per threshold (5 / 3 / 1) per app session, tracked in
+    /// `lowQuotaThresholdsShown`, so the user never gets popup-spammed
+    /// from analysis to analysis.
+    private func maybeShowLowQuotaSheet() {
+        let remaining: Int = {
+            switch subs.tier {
+            case .free:
+                return max(0, SubscriptionManager.freeLifetimeAnalyses - subs.freeUsed)
+            case .packCredits(let n):
+                return n
+            case .subscriber:
+                return max(0, SubscriptionManager.subMonthlyAnalyses - subs.subAnalyzesUsed)
+            }
+        }()
+        // Hard 0 is handled by the post-analyze paywall path — no point
+        // showing both. We focus the nudge on the "you have a few left,
+        // top up now" window.
+        let thresholds = [5, 3, 1]
+        guard let hit = thresholds.first(where: { remaining == $0 }),
+              !lowQuotaThresholdsShown.contains(hit)
+        else { return }
+        lowQuotaThresholdsShown.insert(hit)
+        lowQuotaSheetCount = remaining
+        showLowQuotaSheet = true
+    }
+
+    /// Tier-aware paywall reason for the low-quota nudge's "Top up" button.
+    /// Picks the BlockReason whose copy reads most naturally for the
+    /// current state — pack users get pack-empty messaging, etc.
+    private func lowQuotaPaywallReason() -> SubscriptionManager.GateResult.BlockReason {
+        switch subs.tier {
+        case .free:         return .freeExhausted
+        case .packCredits:  return .packEmpty
+        case .subscriber:   return .subAnalyzeQuotaExhausted
         }
     }
 
