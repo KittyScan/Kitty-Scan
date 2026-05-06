@@ -30,12 +30,18 @@ final class CatIdentityService {
     //   same cat, varied angles/lighting: typically 0.5–1.2
     //   different cat, same breed:        typically 1.4–2.2
     //   different cat, different breed:   typically 1.8–4.0+
-    // We bias toward *firing the alert* on borderline cases — a false positive
-    // costs the user one tap ("same cat, save it"); a false negative silently
-    // saves the friend's cat under the wrong profile, which is the bug we're
-    // trying to prevent. Hence the 1.5 cutoff for "different cat".
-    private static let sameCatMaxDistance:      Float = 1.0
-    private static let differentCatMinDistance: Float = 1.5
+    //
+    // Calibration history:
+    //   v1: 1.0 / 1.5 — too strict. Same-cat-different-angle photos at 1.1-1.4
+    //       fell into 'uncertain'; angle-shift to 1.5+ falsely fired the
+    //       'different cat' alert. Real users were getting prompted on their
+    //       own cat constantly.
+    //   v2 (current): 1.2 / 1.8 — covers the same-cat 0.5-1.2 range entirely
+    //       and pushes the 'different cat' floor above the same-cat upper
+    //       bound, eliminating the cross-band false positive. Uncertain band
+    //       (1.2-1.8) silently saves under active profile (safer default).
+    private static let sameCatMaxDistance:      Float = 1.2
+    private static let differentCatMinDistance: Float = 1.8
 
     enum Decision {
         case sameCat

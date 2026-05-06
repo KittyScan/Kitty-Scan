@@ -95,22 +95,29 @@ enum PromptBuilder {
         • posture(体态): 姿势是否自然、胖瘦、是否蜷缩/僵硬
         • energy(精神): 神情是否精神、警觉,还是呆滞/萎靡
 
-        每项打分 rubric:
-        • 95-100:完美 — 这个维度挑不出任何毛病
-        • 85-94: 很好,只有一个小瑕疵
-        • 70-84: OK 但有可见问题
-        • 55-69: 明显问题
-        • 40-54: 严重问题
-        • 0-39:  危险
+        每项打分 rubric(用具体描述 anchor,不是抽象数字):
+        • 95-100:**完美无瑕** — 例如毛发油亮无一处稀疏 + 眼睛湿润清澈 + 姿态完全放松
+        • 85-94: **很好,有一处可挑剔的细节** — 例如毛色整体好但某处略显稀疏,或眼神好但稍有疲态
+        • 70-84: **可见问题** — 例如局部打结、眼角有点分泌物、略胖
+        • 55-69: **明显问题** — 例如多处打结、眼睛红肿、明显消瘦或肥胖
+        • 40-54: **严重问题** — 大面积皮肤问题、瞳孔异常、明显萎靡
+        • 0-39:  **危险信号** — 严重脱水、呼吸困难、瞳孔无反应等
 
-        【禁令】
-        - 不要默认全打 85
-        - 不要让 4 个维度分数趋同(除非确实都一样好/一样差)
-        - 不要因为历史分数 85 就这次也 85 —— 独立判断
-        - 四个维度分数必须和对应文字描述一致:
+        【硬性规则 · 强制执行】
+        1. **先找最弱**: 在打分前,你必须先确定 4 个维度里最弱的那一个,
+           并具体指出扣分原因(哪怕只是很轻微的细节)。**没有任何一只猫
+           4 个维度都完美 ≥ 90** —— 自然光、毛发油亮、姿态放松三者同时
+           满足才能 ≥ 95,大多数情况下你能找到至少一处可改进的地方。
+        2. **梯度强制**: subScores 4 个数字中,**至少有 1 个必须 ≤ 79**。
+           如果你想全打 85+,停下来,重新审视照片找出最弱那个。
+        3. **数字必须分散**: 4 个数字两两之间差距 ≥ 4。**禁止** 88-88-88-88
+           或 90-89-91-90 这种扎堆。
+        4. **历史不影响本次**: 历史分数只用于趋势对比(变好/变差/持平),
+           **不影响本次的绝对评分**。
+        5. 文字描述和分数必须一致:
           * "眼睛明亮有神" → eyes ≥ 88
-          * "毛发有些粗糙" → fur 必须 < 80
-          * "神情萎靡" → energy 必须 < 65
+          * "毛发有些粗糙" → fur 必须 ≤ 78
+          * "神情萎靡" → energy 必须 ≤ 65
 
         summary 里一句话说明**最弱那个维度的主要扣分点**。
 
@@ -134,12 +141,14 @@ enum PromptBuilder {
 
         【输出格式 · 必须严格遵守】
         分两段输出,中间用一个空行分开:
-        第一段: 用 1-2 句中文,平实地说出你看到了什么(比如"看到一只虎斑猫,
-                眼神明亮,毛色光亮,姿态放松")。这段会以打字机效果实时显示
-                给主人,所以不要 markdown,不要列表,纯文字。**不要**带任何
-                JSON 字符,不要写"以下是 JSON"之类的过渡语。
+        第一段: 1-2 句中文,**必须包含**最弱维度 + 它的具体扣分点(哪怕轻微)。
+                例如"看到一只虎斑猫,毛色油亮但右眼角有一点分泌物 — 眼睛
+                是今天最弱的那一项"。这段会以打字机效果实时显示给主人,
+                所以不要 markdown,不要列表,纯文字。**不要**带任何 JSON 字符,
+                不要写"以下是 JSON"之类的过渡语。
         第二段: 一个合法的 JSON 对象,不要 markdown 围栏。JSON 后面不要
                 再有任何文字。
+                **subScores 中至少有 1 个 ≤ 79,任意两个差距 ≥ 4**。
         字段和类型必须和下面这个示例一致(里面的数字/文字是示例,你自己填):
         {
           "breed": "橘色虎斑",
@@ -251,22 +260,31 @@ enum PromptBuilder {
         • posture: natural vs hunched/stiff, body condition (over/underweight)
         • energy:  alert vs listless, demeanor in the photo
 
-        Per-dimension rubric:
-        • 95-100: this dimension shows no flaw
-        • 85-94:  very good with ONE tiny imperfection
-        • 70-84:  OK but a visible issue
-        • 55-69:  clear problem
-        • 40-54:  serious problem
-        • 0-39:   dangerous
+        Per-dimension rubric (anchored with concrete pictures, not abstract numbers):
+        • 95-100: **flawless** — e.g. coat glossy with no thinning + eyes wet & clear + posture fully relaxed
+        • 85-94:  **very good with one nitpick** — e.g. coat good but slightly thin in one spot, or alert eyes with mild tiredness
+        • 70-84:  **visible issue** — e.g. localized matting, eye corner discharge, slightly overweight
+        • 55-69:  **clear problem** — e.g. multi-spot matting, red/swollen eyes, notably skinny or fat
+        • 40-54:  **serious problem** — large skin patches, abnormal pupils, visible listlessness
+        • 0-39:   **danger signal** — severe dehydration, labored breathing, non-responsive pupils
 
-        [FORBIDDEN]
-        - Do NOT default all four to 85.
-        - Do NOT let the four scores cluster (unless the cat genuinely is uniformly good/bad).
-        - Do NOT anchor on the cat's past scores — grade this check fresh.
-        - Each dimension score must match its textual description:
+        [HARD RULES — must follow]
+        1. **Find the weakest first**: before scoring, identify which of the 4
+           dimensions is weakest and the specific deduction (even if minor).
+           **No cat scores ≥90 across all four dimensions** — natural light +
+           glossy coat + relaxed pose all-at-once is rare; almost always there's
+           something worth noting.
+        2. **Mandatory spread**: at least ONE of the 4 sub-scores MUST be ≤ 79.
+           If you want to give all 85+, stop and re-look for the weakest.
+        3. **Numbers must spread**: every pair of sub-scores must differ by ≥ 4.
+           **Forbidden** patterns: 88-88-88-88 or 90-89-91-90.
+        4. **History does NOT influence today's absolute score**: history is
+           only for trend comparison (improved/worsened/stable). Grade today
+           fresh.
+        5. Text must match the score:
           * "Bright, alert eyes" → eyes ≥ 88
-          * "Slightly coarse fur" → fur must be < 80
-          * "Listless look"      → energy must be < 65
+          * "Slightly coarse fur" → fur ≤ 78
+          * "Listless look"      → energy ≤ 65
 
         In `summary`, one sentence about the weakest dimension's main deduction.
 
@@ -292,14 +310,17 @@ enum PromptBuilder {
 
         [OUTPUT FORMAT — STRICT]
         Output in two sections separated by a single blank line:
-        Section 1: 1-2 plain sentences saying what you observe (e.g.,
-                   "I see a tabby with bright eyes, glossy coat, relaxed
-                   posture."). This streams to the owner with a typewriter
-                   effect, so plain prose only — no markdown, no lists.
-                   **Do not** include any JSON characters or a transition
-                   like "Here is the JSON".
+        Section 1: 1-2 plain sentences that **must include** the weakest
+                   dimension + its specific deduction (even if minor).
+                   E.g. "I see a tabby — coat is glossy but the right eye
+                   has a tiny corner discharge; eyes are the weakest today."
+                   This streams to the owner with a typewriter effect, so
+                   plain prose only — no markdown, no lists. **Do not**
+                   include any JSON characters or 'Here is the JSON' transitions.
         Section 2: One valid JSON object, no markdown fences. Nothing after
                    the JSON.
+                   **At least one subScores entry must be ≤ 79; every pair
+                   must differ by ≥ 4.**
         Fields + types must match this example (values are placeholders, fill yours):
         {
           "breed": "Orange Tabby",
