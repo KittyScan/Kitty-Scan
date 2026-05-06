@@ -171,6 +171,12 @@ struct CameraView: View {
             }
             Button(lang.isChineseSelected ? "就是 \(mismatchOriginalCat?.name ?? "TA"),保存" : "Same cat, save it") {
                 let original = mismatchOriginalCat
+                // Teach the identity service that this distance counts as
+                // 'same cat' for THIS specific cat — next compare will widen
+                // the alert band so the same shot doesn't false-positive again.
+                if let cat = original, let dist = mismatchVerdict?.minDistance {
+                    CatIdentityService.recordOverrideAsSameCat(cat: cat, observedDistance: dist)
+                }
                 persistPending(under: original)
                 // User overrode the verdict — restore the selector state we
                 // proactively cleared, and re-attach the on-screen report to

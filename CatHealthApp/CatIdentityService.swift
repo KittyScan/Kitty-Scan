@@ -34,14 +34,21 @@ final class CatIdentityService {
     // Calibration history:
     //   v1: 1.0 / 1.5 — too strict. Same-cat-different-angle photos at 1.1-1.4
     //       fell into 'uncertain'; angle-shift to 1.5+ falsely fired the
-    //       'different cat' alert. Real users were getting prompted on their
-    //       own cat constantly.
-    //   v2 (current): 1.2 / 1.8 — covers the same-cat 0.5-1.2 range entirely
-    //       and pushes the 'different cat' floor above the same-cat upper
-    //       bound, eliminating the cross-band false positive. Uncertain band
-    //       (1.2-1.8) silently saves under active profile (safer default).
+    //       'different cat' alert. Users got prompted on their own cat constantly.
+    //   v2: 1.2 / 1.8 — better but still false-positives on real-world photos.
+    //       Strong angle/lighting shifts (close-up vs full-body, sun vs indoor)
+    //       routinely hit 1.8-2.4 on the SAME cat. The Vision feature print
+    //       isn't fine-tuned for cats, so same-cat-different-pose can sit on
+    //       top of different-cat-same-breed.
+    //   v3 (current): 1.2 / 2.5 — only fire the 'different cat' alert when
+    //       distance is BIG enough to be unambiguous. False-negative cost
+    //       (a friend's cat saves under the wrong profile) is rare AND
+    //       user-recoverable via long-press → delete; false-positive cost
+    //       (own cat flagged daily) is common AND annoying. We tilt toward
+    //       silence. Uncertain band (1.2-2.5) saves silently under the
+    //       active profile.
     private static let sameCatMaxDistance:      Float = 1.2
-    private static let differentCatMinDistance: Float = 1.8
+    private static let differentCatMinDistance: Float = 2.5
 
     enum Decision {
         case sameCat
@@ -75,12 +82,13 @@ final class CatIdentityService {
         }
 
         let referenceImages = references.compactMap { UIImage(data: $0) }
+        let perCatFloor = Self.learnedToleranceFloor(for: cat)
         return await Task.detached(priority: .userInitiated) { [newImage] in
-            await Self.computeVerdict(newImage: newImage, references: referenceImages)
+            await Self.computeVerdict(newImage: newImage, references: referenceImages, perCatFloor: perCatFloor)
         }.value
     }
 
-    private static func computeVerdict(newImage: UIImage, references: [UIImage]) async -> Verdict {
+    private static func computeVerdict(newImage: UIImage, references: [UIImage], perCatFloor: Float) async -> Verdict {
         guard let newPrint = featurePrint(from: newImage) else {
             return Verdict(decision: .uncertain, minDistance: nil, referenceCount: references.count)
         }
@@ -103,13 +111,52 @@ final class CatIdentityService {
             return Verdict(decision: .uncertain, minDistance: nil, referenceCount: references.count)
         }
 
+        // The 'different cat' floor is the MAX of the global default and any
+        // per-cat learned floor. If the user has overridden the alert ("same
+        // cat, save anyway") in the past at distance D, perCatFloor ≥ D + 0.1
+        // so the same shot won't false-positive again. Per-cat floor never
+        // shrinks the alert band — only widens it.
+        let effectiveDifferentFloor = max(differentCatMinDistance, perCatFloor)
+
         let decision: Decision = {
-            if minDistance < sameCatMaxDistance      { return .sameCat }
-            if minDistance > differentCatMinDistance { return .differentCat }
+            if minDistance < sameCatMaxDistance       { return .sameCat }
+            if minDistance > effectiveDifferentFloor  { return .differentCat }
             return .uncertain
         }()
 
         return Verdict(decision: decision, minDistance: minDistance, referenceCount: compared)
+    }
+
+    // MARK: - Per-cat learned tolerance
+    //
+    // When the user dismisses a 'different cat' alert by choosing 'same cat,
+    // save anyway', that's the strongest possible signal that the threshold
+    // was wrong for THIS cat. We store the highest such distance per-cat in
+    // UserDefaults, and `compare()` reads it back as the floor on subsequent
+    // comparisons. Net effect: each cat naturally trains to its own tolerance
+    // (e.g. fluffy cats with extreme pose variation end up with a higher
+    // floor than uniformly-coated cats).
+
+    private static func toleranceKey(for cat: Cat) -> String {
+        "identity.tolerance.\(cat.id.uuidString)"
+    }
+
+    /// Read the learned per-cat tolerance floor. Returns 0 (no boost) when
+    /// the user has never overridden an alert for this cat.
+    static func learnedToleranceFloor(for cat: Cat) -> Float {
+        let raw = UserDefaults.standard.float(forKey: toleranceKey(for: cat))
+        return raw  // UserDefaults.float returns 0.0 when key absent — exactly what we want.
+    }
+
+    /// Called from CameraView when the user clicks 'same cat, save anyway'
+    /// on the mismatch alert. Records the observed distance + small margin
+    /// as the new per-cat floor (only if it would widen the band).
+    static func recordOverrideAsSameCat(cat: Cat, observedDistance: Float) {
+        let prior = learnedToleranceFloor(for: cat)
+        let candidate = observedDistance + 0.1
+        if candidate > prior {
+            UserDefaults.standard.set(candidate, forKey: toleranceKey(for: cat))
+        }
     }
 
     private static func featurePrint(from image: UIImage) -> VNFeaturePrintObservation? {
